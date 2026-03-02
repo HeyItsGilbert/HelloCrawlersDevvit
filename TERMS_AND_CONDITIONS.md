@@ -9,6 +9,7 @@ By using the hellocrawlers Devvit application ("the App") on the r/hellocrawlers
 ## 2. Description of Service
 
 The App is a Reddit moderator tool that:
+
 - Automatically detects new Hello Crawlers podcast episodes via RSS feed
 - Generates episode discussion posts using the Anthropic Claude API
 - Manages post pinning and rotation on r/hellocrawlers
@@ -18,11 +19,14 @@ The App is provided as a community tool for the r/hellocrawlers subreddit and is
 ## 3. Use of the Service
 
 ### 3.1 Permitted Use
+
 - The App is intended solely for use within the r/hellocrawlers subreddit by its moderators and community members.
 - Moderators may use the mod menu action to manually trigger episode checks.
 
 ### 3.2 Prohibited Use
+
 You agree not to:
+
 - Attempt to circumvent, disable, or interfere with the App's functionality
 - Use the App for any unlawful purpose or in violation of Reddit's [User Agreement](https://www.redditinc.com/policies/user-agreement) or [Content Policy](https://www.redditinc.com/policies/content-policy)
 - Attempt to extract, reverse-engineer, or misuse the App's source code or API credentials
@@ -31,6 +35,7 @@ You agree not to:
 ## 4. Third-Party Services
 
 The App relies on third-party services, including:
+
 - **Reddit / Devvit Platform** — subject to [Reddit's Terms of Service](https://www.redditinc.com/policies/user-agreement)
 - **Anthropic Claude API** — subject to [Anthropic's Usage Policies](https://www.anthropic.com/legal/usage-policy)
 - **Hello Crawlers RSS Feed** — publicly available podcast feed
