@@ -1,0 +1,1 @@
+{"root":["./src/claudeclient.ts","./src/episodechecker.ts","./src/main.ts","./src/nuke.ts","./src/postmanager.ts","./src/systemprompt.ts","./src/types.ts"],"errors":true,"version":"5.8.3"}
