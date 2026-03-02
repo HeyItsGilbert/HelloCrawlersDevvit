@@ -4,24 +4,24 @@
 
 ## 1. Acceptance of Terms
 
-By using the hellocrawlers Devvit application ("the App") on the r/hellocrawlers subreddit, you agree to be bound by these Terms and Conditions. If you do not agree, please do not use the App.
+By using the youtube-gemini-post Devvit application ("the App") on the installing subreddit, you agree to be bound by these Terms and Conditions. If you do not agree, please do not use the App.
 
 ## 2. Description of Service
 
 The App is a Reddit moderator tool that:
 
-- Automatically detects new Hello Crawlers podcast episodes via RSS feed
-- Generates episode discussion posts using the Anthropic Claude API
-- Manages post pinning and rotation on r/hellocrawlers
+- Automatically monitors a configured YouTube playlist for new videos via the YouTube Data API
+- Generates video discussion posts using the Google Gemini API
+- Manages post pinning and rotation on the installing subreddit
 
-The App is provided as a community tool for the r/hellocrawlers subreddit and is not affiliated with, endorsed by, or sponsored by Anthropic, Reddit Inc., or the creators of the Hello Crawlers podcast.
+The App is provided as a community tool and is not affiliated with, endorsed by, or sponsored by Google, YouTube, or Reddit Inc.
 
 ## 3. Use of the Service
 
 ### 3.1 Permitted Use
 
-- The App is intended solely for use within the r/hellocrawlers subreddit by its moderators and community members.
-- Moderators may use the mod menu action to manually trigger episode checks.
+- The App is intended for use within the installing subreddit by its moderators and community members.
+- Moderators may use the mod menu action to manually trigger video checks.
 
 ### 3.2 Prohibited Use
 
@@ -36,15 +36,15 @@ You agree not to:
 
 The App relies on third-party services, including:
 
-- **Reddit / Devvit Platform** — subject to [Reddit's Terms of Service](https://www.redditinc.com/policies/user-agreement)
-- **Anthropic Claude API** — subject to [Anthropic's Usage Policies](https://www.anthropic.com/legal/usage-policy)
-- **Hello Crawlers RSS Feed** — publicly available podcast feed
+- **Reddit / Devvit Platform** -- subject to [Reddit's Terms of Service](https://www.redditinc.com/policies/user-agreement)
+- **Google Gemini API** -- subject to [Google's Terms of Service](https://policies.google.com/terms)
+- **YouTube Data API** -- subject to [YouTube's Terms of Service](https://www.youtube.com/t/terms)
 
 We are not responsible for the availability, accuracy, or content provided by these third-party services.
 
 ## 5. Content
 
-AI-generated post content is produced by the Anthropic Claude API using episode metadata from the Hello Crawlers RSS feed. Generated content is intended to be in-character for the subreddit's theme but may occasionally be inaccurate or unexpected. Subreddit moderators retain full discretion to edit or remove any generated posts.
+AI-generated post content is produced by the Google Gemini API using video metadata from the YouTube Data API. Generated content is intended to facilitate discussion but may occasionally be inaccurate or unexpected. Subreddit moderators retain full discretion to edit or remove any generated posts.
 
 ## 6. Disclaimer of Warranties
 
@@ -60,4 +60,4 @@ We reserve the right to modify these Terms at any time. Continued use of the App
 
 ## 9. Contact
 
-For questions about these Terms, please contact the r/hellocrawlers moderation team via [Reddit modmail](https://www.reddit.com/message/compose?to=r/hellocrawlers).
+For questions about these Terms, please contact the subreddit moderation team via Reddit modmail.

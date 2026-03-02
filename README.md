@@ -1,27 +1,40 @@
-# hellocrawlers
+# youtube-gemini-post
 
-A Devvit mod tool for r/hellocrawlers that automatically detects new [Hello Crawlers podcast](https://www.hellocrawlers.com) episodes, generates an in-character episode discussion post via the Gemini API, and manages pin rotation on the subreddit.
+A Devvit app that monitors a YouTube playlist for new videos, generates a Reddit post using the Google Gemini API, and manages pin rotation on the subreddit. Both APIs are free-tier, making this a zero-cost automation for any community.
 
 ## What it does
 
-- **Polls the YouTube playlist** (`https://www.youtube.com/playlist?list=PL0WMaa8s_mXGb3089AMtiyvordHKAZKi9`) every 30 minutes via a scheduled job
-- **Detects new episodes** using Redis to track the last-seen episode video ID
-- **Calls Gemini** (gemini-2.0-flash — free tier) with the episode metadata and a custom system prompt to generate a discussion post written in the voice of the Dungeon Crawler Carl System AI
-- **Submits the post** to r/hellocrawlers with the "Episode Discussion" flair applied
-- **Rotates the pin** — stickies the new post and unstickies the previous episode post
+- **Monitors a YouTube playlist** every 30 minutes via a scheduled job
+- **Detects new videos** using Redis to track the last-seen video ID
+- **Calls Gemini** with video metadata and a mod-supplied system prompt to generate a discussion post
+- **Submits the post** to the subreddit with optional flair
+- **Rotates the pin** -- stickies the new post and unstickies the previous one
+- **Mop tool** -- bulk comment removal for moderators (comment and post context menus)
 
-A moderator menu item on the subreddit ("Check for new episodes") lets mods trigger an immediate check at any time.
+A moderator menu item ("Check for new videos") lets mods trigger an immediate check at any time.
+
+## Settings
+
+All settings are configured per subreddit in the app's installation settings.
+
+| Name | Type | Secret | Default | Description |
+|------|------|--------|---------|-------------|
+| `googleApiKey` | string | Yes | -- | Google API key (YouTube Data API + Gemini) |
+| `youtubePlaylistId` | string | No | -- | YouTube playlist ID to monitor |
+| `geminiModel` | string | No | `gemini-2.0-flash` | Gemini model for post generation |
+| `systemPrompt` | paragraph | No | -- | Full system prompt for Gemini (controls voice, structure, rules) |
+| `flairName` | string | No | *(empty)* | Post flair to apply (exact name match, optional) |
 
 ## Project structure
 
 ```
 src/
-  main.ts              — Entry point: Devvit config, settings, scheduler job, AppInstall trigger, menu action
-  episodeChecker.ts    — YouTube Data API v3 playlist fetch, new-episode detection
-  claudeClient.ts      — Gemini API integration, post generation
-  postManager.ts       — Reddit post creation, flair assignment, pin/unpin logic
-  systemPrompt.ts      — Gemini system prompt (DCC System AI voice)
-  types.ts             — Shared TypeScript types (EpisodeData, GeneratedPost)
+  main.ts              -- Entry point: settings, scheduler, triggers, menu actions
+  episodeChecker.ts    -- YouTube Data API: fetch latest video from playlist
+  claudeClient.ts      -- Gemini API: generate post with mod-supplied prompt
+  postManager.ts       -- Reddit post creation, flair, pin management
+  types.ts             -- Shared TypeScript types (EpisodeData, GeneratedPost)
+  nuke.ts              -- Comment moderation tool (Mop)
 ```
 
 ## Setup
@@ -38,49 +51,40 @@ npm install
 npm run dev
 ```
 
-This installs the app to your test subreddit and streams logs. At least one installation is required before you can set secrets.
+This installs the app to your test subreddit and streams logs.
 
-### 3. Set the Google API key
+### 3. Configure settings
 
-```bash
-npx devvit settings set googleApiKey
-```
+In your subreddit's app settings page, configure:
 
-Get a free key from the [Google Cloud Console](https://console.cloud.google.com/). Enable both the **YouTube Data API v3** and the **Generative Language API (Gemini)** for your project. Both are free within their daily quotas (well within usage for a weekly podcast).
+- **Google API Key** -- Get a free key from the [Google Cloud Console](https://console.cloud.google.com/). Enable both the **YouTube Data API v3** and the **Generative Language API (Gemini)** for your project.
+- **YouTube Playlist ID** -- The ID of the playlist to monitor (the part after `list=` in the URL).
+- **System Prompt** -- Instructions for Gemini that control the voice and format of generated posts. See `SystemPrompt.example.md` for a sample.
+- **Post Flair** (optional) -- The exact name of a post flair template on your subreddit.
+- **Gemini Model** (optional) -- Defaults to `gemini-2.0-flash` (free tier).
 
-### 4. Approve HTTP domains
+### 4. HTTP domains
 
-Both `youtube.googleapis.com` and `generativelanguage.googleapis.com` are already on the Devvit global allow-list — no additional domain approval is needed.
-
-### 5. Create the "Episode Discussion" flair
-
-In r/hellocrawlers subreddit settings, create a post flair with the text **Episode Discussion** (exact match, case-insensitive). The bot looks this up by name at runtime.
+Both `youtube.googleapis.com` and `generativelanguage.googleapis.com` are on the Devvit global allowlist. No additional domain approval is needed.
 
 ## Commands
 
-| Command              | Description                                            |
-|----------------------|--------------------------------------------------------|
-| `npm run dev`        | Playtest — installs to test subreddit and streams logs |
-| `npm run deploy`     | Upload app to the App Directory                        |
-| `npm run launch`     | Publish the app                                        |
-| `npm run type-check` | TypeScript type check                                  |
-
-## Viewing logs
-
-```bash
-npx devvit logs <subreddit-name> --since=1h --verbose
-```
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Playtest -- installs to test subreddit and streams logs |
+| `npm run deploy` | Upload app to the App Directory |
+| `npm run launch` | Publish the app |
+| `npm run type-check` | TypeScript type check |
 
 ## Redis keys
 
-| Key                      | Purpose                                                     |
-|--------------------------|-------------------------------------------------------------|
-| `last_episode_guid`      | YouTube video ID of the most recently processed episode (deduplication) |
-| `last_episode_post_id`   | Reddit post ID of the currently pinned episode discussion   |
-| `episode_checker_job_id` | Scheduler job ID (used for clean re-install)                |
+| Key | Purpose |
+|-----|---------|
+| `last_episode_guid` | Video ID of last processed video (deduplication) |
+| `last_episode_post_id` | Reddit post ID of currently pinned post |
+| `episode_checker_job_id` | Scheduler job ID (used for clean re-install) |
 
 ## Learn more
 
 - [Devvit documentation](https://developers.reddit.com/docs/)
 - [Developer portal](https://developers.reddit.com/my/apps)
-- [Hello Crawlers podcast](https://www.hellocrawlers.com)

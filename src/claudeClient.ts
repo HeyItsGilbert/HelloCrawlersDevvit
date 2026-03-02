@@ -1,26 +1,27 @@
 import { type EpisodeData, type GeneratedPost } from './types.js';
-import { SYSTEM_PROMPT } from './systemPrompt.js';
 
-const GEMINI_MODEL = 'gemini-2.0-flash';
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 /**
- * Call the Gemini API to generate an episode discussion post.
+ * Call the Gemini API to generate a post from video metadata.
+ * The system prompt and model are supplied by the caller (from app settings).
  * Returns a parsed { title, body } object ready for Reddit submission.
  */
 export async function generateEpisodePost(
   apiKey: string,
-  episode: EpisodeData
+  episode: EpisodeData,
+  systemPrompt: string,
+  geminiModel: string
 ): Promise<GeneratedPost> {
   const userMessage = buildUserMessage(episode);
-  const url = `${GEMINI_API_BASE}/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = `${GEMINI_API_BASE}/${encodeURIComponent(geminiModel)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       system_instruction: {
-        parts: [{ text: SYSTEM_PROMPT }],
+        parts: [{ text: systemPrompt }],
       },
       contents: [
         {
@@ -56,9 +57,9 @@ export async function generateEpisodePost(
 /**
  * Split the generated response into a Reddit title and body.
  *
- * The system prompt instructs the model to put the title on the first line
- * in the format: [Episode Discussion] {episode_title}
- * The body follows after a blank line separator.
+ * Convention: the first non-empty line of the Gemini output is used as the
+ * post title. Everything after it becomes the body. The system prompt
+ * supplied by the mod controls what format the title takes.
  */
 function parseGeneratedResponse(fullText: string, fallbackTitle: string): GeneratedPost {
   const lines = fullText.split('\n');
@@ -66,23 +67,13 @@ function parseGeneratedResponse(fullText: string, fallbackTitle: string): Genera
   // Find the first non-empty line — that's the title
   const titleLineIndex = lines.findIndex((l) => l.trim().length > 0);
   if (titleLineIndex === -1) {
-    // Completely empty response — shouldn't happen, but be defensive
     return {
-      title: `[Episode Discussion] ${fallbackTitle}`,
+      title: fallbackTitle,
       body: fullText.trim(),
     };
   }
 
-  const rawTitleLine = lines[titleLineIndex].trim();
-
-  // Normalise: ensure it starts with "[Episode Discussion]"
-  const episodeDiscussionPrefix = '[Episode Discussion]';
-  let title: string;
-  if (rawTitleLine.toLowerCase().startsWith('[episode discussion]')) {
-    title = rawTitleLine;
-  } else {
-    title = `${episodeDiscussionPrefix} ${rawTitleLine}`;
-  }
+  const title = lines[titleLineIndex].trim();
 
   // Everything after the title line is the body
   const body = lines
@@ -94,13 +85,13 @@ function parseGeneratedResponse(fullText: string, fallbackTitle: string): Genera
 }
 
 /**
- * Build the user message containing episode metadata.
+ * Build the user message containing video metadata.
  */
 function buildUserMessage(episode: EpisodeData): string {
   const parts: string[] = [
-    'New episode released. Please generate the full discussion post following your post structure instructions.',
+    'New video released. Please generate the full post following your instructions.',
     '',
-    `**Episode Title:** ${episode.title}`,
+    `**Title:** ${episode.title}`,
   ];
 
   if (episode.episodeNumber) {
@@ -110,10 +101,10 @@ function buildUserMessage(episode: EpisodeData): string {
   parts.push(`**Published:** ${episode.pubDate}`);
 
   if (episode.link) {
-    parts.push(`**Episode Link:** ${episode.link}`);
+    parts.push(`**Link:** ${episode.link}`);
   }
 
-  parts.push('', '**Episode Description:**', episode.description || '(No description available)');
+  parts.push('', '**Description:**', episode.description || '(No description available)');
 
   return parts.join('\n');
 }

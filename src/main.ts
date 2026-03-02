@@ -2,39 +2,74 @@ import { Devvit, SettingScope } from "@devvit/public-api";
 
 import { fetchLatestYouTubeEpisode, isNewEpisode } from "./episodeChecker.js";
 import { generateEpisodePost } from "./claudeClient.js";
-import { createEpisodePost, applyEpisodeFlair, managePins } from "./postManager.js";
+import { createEpisodePost, applyFlair, managePins } from "./postManager.js";
 
 Devvit.configure({
   redditAPI: true,
   redis: true,
   http: {
     domains: [
-      'youtube.googleapis.com',          // YouTube Data API (episode detection)
+      'youtube.googleapis.com',          // YouTube Data API (video detection)
       'generativelanguage.googleapis.com', // Gemini API (post generation)
     ],
   },
 });
 
 // ---------------------------------------------------------------------------
-// App settings & secrets
+// App settings — all Installation-scoped so each subreddit configures its own
 // ---------------------------------------------------------------------------
 
 Devvit.addSettings([
+  // --- API Access ---
   {
     type: 'string',
     name: 'googleApiKey',
     label: 'Google API Key (YouTube Data API + Gemini)',
+    helpText: 'Free from Google Cloud Console. Enable YouTube Data API v3 and Generative Language API.',
     isSecret: true,
-    scope: SettingScope.App,
+    scope: SettingScope.Installation,
   },
+
+  // --- YouTube Source ---
   {
     type: 'string',
-    name: 'subredditName',
-    label: 'Subreddit name (without r/)',
+    name: 'youtubePlaylistId',
+    label: 'YouTube Playlist ID',
+    helpText: 'The playlist to monitor for new videos (e.g., PL0WMaa8s_mXGb3089AMtiyvordHKAZKi9).',
     scope: SettingScope.Installation,
-    defaultValue: 'hellocrawlers',
+  },
+
+  // --- Gemini Configuration ---
+  {
+    type: 'string',
+    name: 'geminiModel',
+    label: 'Gemini Model',
+    helpText: 'Model ID for post generation (default: gemini-2.0-flash, free tier).',
+    defaultValue: 'gemini-2.0-flash',
+    scope: SettingScope.Installation,
+  },
+  {
+    type: 'paragraph',
+    name: 'systemPrompt',
+    label: 'System Prompt',
+    helpText: 'Instructions for Gemini. First line of output is used as the post title. See SystemPrompt.example.md for a sample.',
+    scope: SettingScope.Installation,
+  },
+
+  // --- Reddit Post Options ---
+  {
+    type: 'string',
+    name: 'flairName',
+    label: 'Post Flair (optional)',
+    helpText: 'Exact name of a post flair template on this subreddit. Leave blank for no flair.',
+    defaultValue: '',
+    scope: SettingScope.Installation,
   },
 ]);
+
+// ---------------------------------------------------------------------------
+// Mop (comment moderation tool) — unchanged
+// ---------------------------------------------------------------------------
 
 const nukeFields: FormField[] = [
   {
@@ -157,7 +192,7 @@ Devvit.addMenuItem({
 });
 
 // ---------------------------------------------------------------------------
-// Episode checker — scheduler job
+// Video checker — scheduler job
 // ---------------------------------------------------------------------------
 
 Devvit.addSchedulerJob({
@@ -166,62 +201,75 @@ Devvit.addSchedulerJob({
     const { redis, reddit, settings } = context;
 
     try {
-      // 1. Retrieve the Google API key (needed for both YouTube and Gemini)
+      // 1. Read all settings
       const googleApiKey = await settings.get<string>('googleApiKey');
+      const playlistId = await settings.get<string>('youtubePlaylistId');
+      const geminiModel = (await settings.get<string>('geminiModel')) || 'gemini-2.0-flash';
+      const systemPrompt = await settings.get<string>('systemPrompt');
+      const flairName = (await settings.get<string>('flairName')) || '';
+
+      // 2. Validate required settings
       if (!googleApiKey) {
-        console.error('[episodeBot] Google API key not configured. Run: npx devvit settings set googleApiKey');
+        console.error('[bot] Google API key not configured. Set it in the app settings.');
+        return;
+      }
+      if (!playlistId) {
+        console.error('[bot] YouTube Playlist ID not configured. Set it in the app settings.');
+        return;
+      }
+      if (!systemPrompt) {
+        console.error('[bot] System prompt not configured. Set it in the app settings.');
         return;
       }
 
-      // 2. Fetch the latest episode from YouTube
-      console.log('[episodeBot] Fetching YouTube playlist...');
-      const episode = await fetchLatestYouTubeEpisode(googleApiKey);
+      // 3. Fetch the latest video from the YouTube playlist
+      const subredditName = context.subredditName!;
+      console.log(`[bot] Checking playlist ${playlistId} for ${subredditName}...`);
+      const episode = await fetchLatestYouTubeEpisode(googleApiKey, playlistId);
 
       if (!episode) {
-        console.log('[episodeBot] No episodes found in YouTube playlist.');
+        console.log('[bot] No videos found in YouTube playlist.');
         return;
       }
 
-      // 3. Skip if this episode was already processed
+      // 4. Skip if already processed
       if (!(await isNewEpisode(redis, episode))) {
-        console.log(`[episodeBot] No new episode. Latest: "${episode.title}"`);
+        console.log(`[bot] No new video. Latest: "${episode.title}"`);
         return;
       }
 
-      console.log(`[episodeBot] 🆕 New episode detected: "${episode.title}"`);
+      console.log(`[bot] New video detected: "${episode.title}"`);
 
-      // 4. Generate post content via Gemini
-      console.log('[episodeBot] Calling Gemini API...');
-      const { title, body } = await generateEpisodePost(googleApiKey, episode);
-      console.log(`[episodeBot] Generated title: "${title}"`);
-
-      // 5. Determine target subreddit
-      const subredditName =
-        (await settings.get<string>('subredditName')) || 'hellocrawlers';
+      // 5. Generate post content via Gemini
+      console.log('[bot] Calling Gemini API...');
+      const { title, body } = await generateEpisodePost(googleApiKey, episode, systemPrompt, geminiModel);
+      console.log(`[bot] Generated title: "${title}"`);
 
       // 6. Submit the Reddit post
       const post = await createEpisodePost(reddit, subredditName, title, body);
-      console.log(`[episodeBot] 📝 Created post ${post.id}`);
+      console.log(`[bot] Created post ${post.id}`);
 
-      // 7. Apply "Episode Discussion" flair
-      await applyEpisodeFlair(reddit, subredditName, post.id);
+      // 7. Apply flair (if configured)
+      if (flairName) {
+        await applyFlair(reddit, subredditName, post.id, flairName);
+      }
 
       // 8. Pin new post & unpin the previous one
       await managePins(reddit, redis, post.id);
 
-      // 9. Persist state so we don't reprocess this episode
+      // 9. Persist state so we don't reprocess this video
       await redis.set('last_episode_guid', episode.guid);
       await redis.set('last_episode_post_id', post.id);
 
-      console.log(`[episodeBot] ✅ Episode post complete: "${title}"`);
+      console.log(`[bot] Post complete: "${title}"`);
     } catch (err) {
-      console.error('[episodeBot] Episode checker failed:', err);
+      console.error('[bot] Video checker failed:', err);
     }
   },
 });
 
 // ---------------------------------------------------------------------------
-// Episode checker — auto-schedule on app install
+// Auto-schedule on app install
 // ---------------------------------------------------------------------------
 
 Devvit.addTrigger({
@@ -244,33 +292,33 @@ Devvit.addTrigger({
       });
 
       await context.redis.set('episode_checker_job_id', jobId);
-      console.log(`[episodeBot] Scheduled episode checker — job ID: ${jobId}`);
+      console.log(`[bot] Scheduled video checker — job ID: ${jobId}`);
     } catch (err) {
-      console.error('[episodeBot] Failed to schedule episode checker:', err);
+      console.error('[bot] Failed to schedule video checker:', err);
     }
   },
 });
 
 // ---------------------------------------------------------------------------
-// Episode checker — manual trigger (moderator menu action on subreddit)
+// Manual trigger (moderator menu action)
 // ---------------------------------------------------------------------------
 
 Devvit.addMenuItem({
-  label: 'Check for new episodes',
-  description: 'Manually trigger the Hello Crawlers RSS check and post a new episode discussion if one is available.',
+  label: 'Check for new videos',
+  description: 'Manually check the YouTube playlist for new videos and generate a post if one is found.',
   location: 'subreddit',
   forUserType: 'moderator',
   onPress: async (_event, context) => {
-    context.ui.showToast('Checking for new episodes…');
+    context.ui.showToast('Checking for new videos...');
     try {
       await context.scheduler.runJob({
         name: 'check_new_episodes',
         runAt: new Date(),
       });
-      context.ui.showToast('Episode check triggered! Check logs for results.');
+      context.ui.showToast('Video check triggered! Check logs for results.');
     } catch (err) {
-      console.error('[episodeBot] Manual trigger failed:', err);
-      context.ui.showToast('Failed to trigger episode check. See logs.');
+      console.error('[bot] Manual trigger failed:', err);
+      context.ui.showToast('Failed to trigger video check. See logs.');
     }
   },
 });

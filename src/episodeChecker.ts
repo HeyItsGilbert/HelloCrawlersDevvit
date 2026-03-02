@@ -1,6 +1,5 @@
 import { type EpisodeData } from './types.js';
 
-const PLAYLIST_ID = 'PL0WMaa8s_mXGb3089AMtiyvordHKAZKi9';
 const YT_API_BASE = 'https://youtube.googleapis.com/youtube/v3';
 
 interface YouTubePlaylistResponse {
@@ -17,13 +16,16 @@ interface YouTubePlaylistResponse {
 }
 
 /**
- * Fetch the latest episode from the Hello Crawlers YouTube playlist.
+ * Fetch the latest video from a YouTube playlist.
  * Returns null if the playlist is empty.
  */
-export async function fetchLatestYouTubeEpisode(apiKey: string): Promise<EpisodeData | null> {
+export async function fetchLatestYouTubeEpisode(
+  apiKey: string,
+  playlistId: string
+): Promise<EpisodeData | null> {
   const url =
     `${YT_API_BASE}/playlistItems` +
-    `?part=snippet&maxResults=1&playlistId=${PLAYLIST_ID}&key=${encodeURIComponent(apiKey)}`;
+    `?part=snippet&maxResults=1&playlistId=${encodeURIComponent(playlistId)}&key=${encodeURIComponent(apiKey)}`;
 
   const response = await fetch(url);
   if (!response.ok) {

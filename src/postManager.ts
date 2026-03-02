@@ -27,24 +27,27 @@ export async function createEpisodePost(
 // ----- Flair ----------------------------------------------------------------
 
 /**
- * Apply the "Episode Discussion" flair to a post.
- * Looks up the flair template by text match; logs a warning if not found.
+ * Apply a flair to a post by matching the flair template name.
+ * If flairName is empty or not found, the post remains unflaired.
  */
-export async function applyEpisodeFlair(
+export async function applyFlair(
   reddit: RedditClient,
   subredditName: string,
-  postId: string
+  postId: string,
+  flairName: string
 ): Promise<void> {
+  if (!flairName) return;
+
   try {
     const flairs = await reddit.getPostFlairTemplates(subredditName);
-    const episodeFlair = flairs.find(
-      (f) => (f.text ?? '').toLowerCase().trim() === 'episode discussion'
+    const match = flairs.find(
+      (f) => (f.text ?? '').toLowerCase().trim() === flairName.toLowerCase().trim()
     );
 
-    if (!episodeFlair) {
+    if (!match) {
       console.warn(
-        '[postManager] "Episode Discussion" flair template not found on subreddit. ' +
-        'Please create it in subreddit settings. Post will remain unflaired.'
+        `[postManager] Flair "${flairName}" not found on subreddit. ` +
+        'Post will remain unflaired.'
       );
       return;
     }
@@ -52,10 +55,10 @@ export async function applyEpisodeFlair(
     await reddit.setPostFlair({
       subredditName,
       postId,
-      flairTemplateId: episodeFlair.id,
+      flairTemplateId: match.id,
     });
 
-    console.log(`[postManager] Applied flair "${episodeFlair.text}" to ${postId}`);
+    console.log(`[postManager] Applied flair "${match.text}" to ${postId}`);
   } catch (err) {
     console.error('[postManager] Failed to apply flair:', err);
   }
@@ -64,9 +67,9 @@ export async function applyEpisodeFlair(
 // ----- Pin management -------------------------------------------------------
 
 /**
- * Unpin the previous episode post (if any) and pin the new one.
+ * Unpin the previous post (if any) and pin the new one.
  *
- * Reddit allows a maximum of 2 sticky posts. Episode discussions occupy slot 1.
+ * Reddit allows a maximum of 2 sticky posts. This bot uses slot 1.
  * The previous post ID is read from Redis key `last_episode_post_id`.
  */
 export async function managePins(
@@ -74,7 +77,7 @@ export async function managePins(
   redis: RedisClient,
   newPostId: string
 ): Promise<void> {
-  // Unpin the previous episode post
+  // Unpin the previous post
   const previousPostId = await redis.get('last_episode_post_id');
   if (previousPostId && previousPostId !== newPostId) {
     try {

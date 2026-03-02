@@ -4,27 +4,27 @@
 
 ## 1. Overview
 
-This Privacy Policy describes how the hellocrawlers Devvit application ("the App") handles information when it operates within the r/hellocrawlers subreddit on Reddit. We are committed to being transparent about the limited data the App processes.
+This Privacy Policy describes how the youtube-gemini-post Devvit application ("the App") handles information when it operates within the installing subreddit on Reddit. We are committed to being transparent about the limited data the App processes.
 
 ## 2. Information We Collect
 
 The App does not collect or store personal information about Reddit users. The following data is processed during normal operation:
 
-### 2.1 Episode Metadata (Stored in Redis)
+### 2.1 Video Metadata (Stored in Redis)
 
-- The GUID of the most recently detected Hello Crawlers podcast episode
-- This is used solely to detect new episodes and avoid duplicate posts
+- The ID of the most recently detected YouTube video from the configured playlist
+- This is used solely to detect new videos and avoid duplicate posts
 
 ### 2.2 Reddit Post Data
 
-- The post ID and URL of the most recently pinned episode discussion post
+- The post ID of the most recently pinned video discussion post
 - This is used to manage pin rotation (unpin the old post, pin the new one)
 
 ### 2.3 Subreddit Settings
 
-- The Claude API key stored as a Devvit secret (encrypted, never logged or exposed)
+- The Google Gemini API key, supplied per-installation by the subreddit's moderators, stored as a Devvit setting (encrypted, never logged or exposed)
 
-All data above is stored within the Devvit/Reddit platform's own infrastructure and is scoped exclusively to the r/hellocrawlers subreddit installation.
+All data above is stored within the Devvit/Reddit platform's own infrastructure and is scoped exclusively to the installing subreddit's installation.
 
 ## 3. Information We Do Not Collect
 
@@ -39,18 +39,18 @@ The App does **not**:
 
 To function, the App sends data to the following third parties:
 
-### 4.1 Anthropic Claude API
+### 4.1 Google Gemini API
 
-When a new episode is detected, the App sends the following to Anthropic's API:
+When a new video is detected, the App sends the following to Google's Gemini API using the mod-supplied API key:
 
-- Episode title, description, and publication date from the public RSS feed
+- Video title, description, and publication date from the YouTube Data API
 - A system prompt defining the post's tone and format
 
-No personal user data is included in these requests. Anthropic's handling of API data is governed by [Anthropic's Privacy Policy](https://www.anthropic.com/legal/privacy).
+No personal user data is included in these requests. Google's handling of API data is governed by [Google's Privacy Policy](https://policies.google.com/privacy).
 
-### 4.2 Hello Crawlers RSS Feed
+### 4.2 YouTube Data API
 
-The App fetches the publicly available RSS feed at `https://anchor.fm/s/103dbb9d4/podcast/rss` on a scheduled basis. No data is sent to this endpoint beyond a standard HTTP GET request.
+The App fetches public YouTube playlist data via the YouTube Data API on a scheduled basis. Only standard API requests are made to retrieve video metadata. Google's handling of this data is governed by [Google's Privacy Policy](https://policies.google.com/privacy).
 
 ### 4.3 Reddit / Devvit Platform
 
@@ -58,15 +58,15 @@ All App actions (post creation, pinning, Redis reads/writes) occur through the D
 
 ## 5. Data Retention
 
-- **Episode GUID:** Overwritten each time a new episode is detected. Only the most recent GUID is stored.
-- **Post ID / URL:** Overwritten each time a new episode post is created.
-- **Claude API key:** Managed as a Devvit secret. Deleted if the App is uninstalled from the subreddit.
+- **Video ID:** Overwritten each time a new video is detected. Only the most recent ID is stored.
+- **Post ID:** Overwritten each time a new video post is created.
+- **Google Gemini API key:** Managed as a per-installation Devvit setting. Deleted if the App is uninstalled from the subreddit.
 
-No historical logs of episode data, API responses, or user interactions are retained by the App.
+No historical logs of video data, API responses, or user interactions are retained by the App.
 
 ## 6. Security
 
-The App relies on the Devvit platform's security infrastructure for data storage and secret management. The Claude API key is stored as an encrypted Devvit secret and is never exposed in logs or source code.
+The App relies on the Devvit platform's security infrastructure for data storage and secret management. The Google Gemini API key is stored as an encrypted Devvit setting and is never exposed in logs or source code.
 
 ## 7. Children's Privacy
 
@@ -78,4 +78,4 @@ We may update this Privacy Policy from time to time. The "Last updated" date at 
 
 ## 9. Contact
 
-For questions or concerns about this Privacy Policy, please contact the r/hellocrawlers moderation team via [Reddit modmail](https://www.reddit.com/message/compose?to=r/hellocrawlers).
+For questions or concerns about this Privacy Policy, please contact the subreddit moderation team via Reddit modmail.
