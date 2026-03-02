@@ -1,12 +1,11 @@
 import { type EpisodeData, type GeneratedPost } from './types.js';
 import { SYSTEM_PROMPT } from './systemPrompt.js';
 
-const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
-// Use the model the user requested in the task description
-const CLAUDE_MODEL = 'claude-sonnet-4-20250514';
+const GEMINI_MODEL = 'gemini-2.0-flash';
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 /**
- * Call the Claude API to generate an episode discussion post.
+ * Call the Gemini API to generate an episode discussion post.
  * Returns a parsed { title, body } object ready for Reddit submission.
  */
 export async function generateEpisodePost(
@@ -14,49 +13,54 @@ export async function generateEpisodePost(
   episode: EpisodeData
 ): Promise<GeneratedPost> {
   const userMessage = buildUserMessage(episode);
+  const url = `${GEMINI_API_BASE}/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
-  const response = await fetch(CLAUDE_API_URL, {
+  const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: CLAUDE_MODEL,
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      messages: [
-        { role: 'user', content: userMessage },
+      system_instruction: {
+        parts: [{ text: SYSTEM_PROMPT }],
+      },
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: userMessage }],
+        },
       ],
+      generationConfig: {
+        maxOutputTokens: 1024,
+      },
     }),
   });
 
   if (!response.ok) {
     const errText = await response.text().catch(() => '(unreadable)');
-    throw new Error(`Claude API error ${response.status}: ${errText}`);
+    throw new Error(`Gemini API error ${response.status}: ${errText}`);
   }
 
   const data = (await response.json()) as {
-    content: Array<{ type: string; text: string }>;
+    candidates?: Array<{
+      content: { parts: Array<{ text: string }> };
+    }>;
   };
 
-  const fullText = data.content?.[0]?.text ?? '';
+  const fullText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
   if (!fullText) {
-    throw new Error('Claude returned an empty response');
+    throw new Error('Gemini returned an empty response');
   }
 
-  return parseClaudeResponse(fullText, episode.title);
+  return parseGeneratedResponse(fullText, episode.title);
 }
 
 /**
- * Split the Claude response into a Reddit title and body.
+ * Split the generated response into a Reddit title and body.
  *
- * The system prompt instructs Claude to put the title on the first line
+ * The system prompt instructs the model to put the title on the first line
  * in the format: [Episode Discussion] {episode_title}
  * The body follows after a blank line separator.
  */
-function parseClaudeResponse(fullText: string, fallbackTitle: string): GeneratedPost {
+function parseGeneratedResponse(fullText: string, fallbackTitle: string): GeneratedPost {
   const lines = fullText.split('\n');
 
   // Find the first non-empty line — that's the title
@@ -90,7 +94,7 @@ function parseClaudeResponse(fullText: string, fallbackTitle: string): Generated
 }
 
 /**
- * Build the user message sent to Claude containing episode metadata.
+ * Build the user message containing episode metadata.
  */
 function buildUserMessage(episode: EpisodeData): string {
   const parts: string[] = [
@@ -109,7 +113,7 @@ function buildUserMessage(episode: EpisodeData): string {
     parts.push(`**Episode Link:** ${episode.link}`);
   }
 
-  parts.push('', '**Episode Description (cleaned show notes):**', episode.description || '(No description available)');
+  parts.push('', '**Episode Description:**', episode.description || '(No description available)');
 
   return parts.join('\n');
 }

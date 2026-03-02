@@ -1,6 +1,6 @@
 import { Devvit, SettingScope } from "@devvit/public-api";
 
-import { fetchRssFeed, parseLatestEpisode, isNewEpisode } from "./episodeChecker.js";
+import { fetchLatestYouTubeEpisode, isNewEpisode } from "./episodeChecker.js";
 import { generateEpisodePost } from "./claudeClient.js";
 import { createEpisodePost, applyEpisodeFlair, managePins } from "./postManager.js";
 
@@ -9,8 +9,8 @@ Devvit.configure({
   redis: true,
   http: {
     domains: [
-      'anchor.fm',          // Hello Crawlers RSS feed
-      'api.anthropic.com',  // Claude API
+      'youtube.googleapis.com',          // YouTube Data API (episode detection)
+      'generativelanguage.googleapis.com', // Gemini API (post generation)
     ],
   },
 });
@@ -22,8 +22,8 @@ Devvit.configure({
 Devvit.addSettings([
   {
     type: 'string',
-    name: 'claudeApiKey',
-    label: 'Anthropic Claude API Key',
+    name: 'googleApiKey',
+    label: 'Google API Key (YouTube Data API + Gemini)',
     isSecret: true,
     scope: SettingScope.App,
   },
@@ -166,17 +166,23 @@ Devvit.addSchedulerJob({
     const { redis, reddit, settings } = context;
 
     try {
-      // 1. Fetch & parse the RSS feed
-      console.log('[episodeBot] Fetching RSS feed...');
-      const xml = await fetchRssFeed();
-      const episode = parseLatestEpisode(xml);
-
-      if (!episode) {
-        console.log('[episodeBot] No episodes found in RSS feed.');
+      // 1. Retrieve the Google API key (needed for both YouTube and Gemini)
+      const googleApiKey = await settings.get<string>('googleApiKey');
+      if (!googleApiKey) {
+        console.error('[episodeBot] Google API key not configured. Run: npx devvit settings set googleApiKey');
         return;
       }
 
-      // 2. Skip if this episode was already processed
+      // 2. Fetch the latest episode from YouTube
+      console.log('[episodeBot] Fetching YouTube playlist...');
+      const episode = await fetchLatestYouTubeEpisode(googleApiKey);
+
+      if (!episode) {
+        console.log('[episodeBot] No episodes found in YouTube playlist.');
+        return;
+      }
+
+      // 3. Skip if this episode was already processed
       if (!(await isNewEpisode(redis, episode))) {
         console.log(`[episodeBot] No new episode. Latest: "${episode.title}"`);
         return;
@@ -184,16 +190,9 @@ Devvit.addSchedulerJob({
 
       console.log(`[episodeBot] 🆕 New episode detected: "${episode.title}"`);
 
-      // 3. Retrieve the Claude API key
-      const claudeApiKey = await settings.get<string>('claudeApiKey');
-      if (!claudeApiKey) {
-        console.error('[episodeBot] Claude API key not configured. Run: npx devvit settings set claudeApiKey');
-        return;
-      }
-
-      // 4. Generate post content via Claude
-      console.log('[episodeBot] Calling Claude API...');
-      const { title, body } = await generateEpisodePost(claudeApiKey, episode);
+      // 4. Generate post content via Gemini
+      console.log('[episodeBot] Calling Gemini API...');
+      const { title, body } = await generateEpisodePost(googleApiKey, episode);
       console.log(`[episodeBot] Generated title: "${title}"`);
 
       // 5. Determine target subreddit
