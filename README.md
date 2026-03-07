@@ -1,6 +1,8 @@
-# youtube-gemini-post
+# YouTube + Gemini Post Devvit App
 
 A Devvit app that monitors a YouTube playlist for new videos, generates a Reddit post using the Google Gemini API, and manages pin rotation on the subreddit. Both APIs are free-tier, making this a zero-cost automation for any community.
+
+Demo: https://www.youtube.com/watch?v=Xdm_pJxI6Yo
 
 ## What it does
 
@@ -11,6 +13,14 @@ A Devvit app that monitors a YouTube playlist for new videos, generates a Reddit
 - **Rotates the pin** -- stickies the new post and unstickies the previous one
 
 A moderator menu item ("Check for new videos") lets mods trigger an immediate check at any time.
+
+## API Key
+
+1. Navigate to your subreddit.
+2. Open the **Mod Tools** menu and select **Set Google API Key**.
+3. Paste your key into the masked input and click **Save**.
+
+The key is stored in the subreddit's Redis store. To get a key, visit the visit the [AI Studio](https://aistudio.google.com/), create a project and API key. Then go to [Google Cloud Console](https://console.cloud.google.com/), switch to the new project, and enable both the **YouTube Data API v3**.
 
 ## Settings
 
@@ -39,7 +49,7 @@ src/
   types.ts             -- Shared TypeScript types (EpisodeData, GeneratedPost)
 ```
 
-## Setup
+## Developer Setup
 
 ### 1. Install dependencies
 
@@ -63,7 +73,7 @@ Each subreddit stores its own Google API key via a mod menu action.
 2. Open the **Mod Tools** menu and select **Set Google API Key**.
 3. Paste your key into the masked input and click **Save**.
 
-The key is stored in the subreddit's Redis store. To get a key, visit the [Google Cloud Console](https://console.cloud.google.com/), create a project, and enable both the **YouTube Data API v3** and the **Generative Language API (Gemini)**. Then create an API key under **APIs & Services > Credentials**.
+The key is stored in the subreddit's Redis store. To get a key, visit the visit the [AI Studio](https://aistudio.google.com/), create a project and API key. Then go to [Google Cloud Console](https://console.cloud.google.com/), switch to the new project, and enable both the **YouTube Data API v3**.
 
 ### 4. Configure installation settings
 
