@@ -261,8 +261,8 @@ Devvit.addSchedulerJob({
       const videoLink = videoLinkLabel && episode.link ? `[${videoLinkLabel}](${episode.link})` : '';
       const body = [prependText, rawBody, videoLink, appendText].filter(Boolean).join('\n\n');
 
-      // 7. Submit the Reddit post
-      const post = await createEpisodePost(reddit, subredditName, title, body);
+      // 7. Submit the link post (URL = episode video link, body = generated text)
+      const post = await createEpisodePost(reddit, subredditName, title, episode.link, body);
       console.log(`[bot] Created post ${post.id}`);
 
       // 8. Apply post flair and bot author flair (if configured)
@@ -283,6 +283,7 @@ Devvit.addSchedulerJob({
       });
       await redis.set('last_episode_guid', episode.guid);
       await redis.set('last_episode_post_id', post.id);
+
 
       console.log(`[bot] Post complete: "${title}"`);
     } catch (err) {

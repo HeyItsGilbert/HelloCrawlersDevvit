@@ -17,12 +17,14 @@ src/
   main.ts           Entry point. Registers settings, menu items, scheduler jobs,
                     and the AppInstall trigger. Owns the top-level orchestration loop.
   episodeChecker.ts YouTube Data API v3 client. Fetches playlists and individual
-                    videos. Contains the deduplication check against Redis.
+                    videos. Contains the exclusion-keyword filter.
   llmClient.ts      Gemini API client (via OpenAI-compatible endpoint). Parses
                     structured title/body from the model's raw text output.
-  postManager.ts    Reddit operations: post submission, flair application, bot
-                    author flair, post editing, and pin rotation.
-  types.ts          Two shared interfaces: EpisodeData and GeneratedPost.
+  postManager.ts    Reddit operations: post submission (link post), flair application,
+                    bot author flair, post editing, and pin rotation.
+  videoRegistry.ts  Redis hash-backed registry of every video the bot has seen.
+                    Stores status (posted/excluded/skipped) and postId per video ID.
+  types.ts          Shared interfaces: EpisodeData, GeneratedPost, VideoRecord.
 
 devvit.json         App manifest. Declares entry point and allowed HTTP domains.
 package.json        Build scripts and dependencies.
@@ -46,32 +48,40 @@ check_new_episodes job (src/main.ts)
   ├─ 1. Read all settings from Devvit settings + Google API key from Redis
   ├─ 2. Validate: googleApiKey, youtubePlaylistId, systemPrompt required
   │
-  ├─ 3. fetchLatestYouTubeEpisode(apiKey, playlistId)          episodeChecker.ts
-  │       GET playlistItems → sort by publishedAt (desc) → return EpisodeData
+  ├─ 3. fetchPlaylistVideos(apiKey, playlistId)                 episodeChecker.ts
+  │       UC... channel ID is auto-converted to UU... uploads playlist
+  │       GET playlistItems (maxResults=50) → sort by publishedAt (desc)
+  │       → return EpisodeData[]
   │
-  ├─ 4. isNewEpisode(redis, episode)                           episodeChecker.ts
-  │       Compare episode.guid vs Redis key `last_episode_guid`
-  │       → skip if same
+  ├─ 4. For each video newest-first:                            videoRegistry.ts
+  │       a. Check force_repost flag — if set, skip registry for first video only
+  │       b. getVideoRecord(redis, video.guid) → skip if already registered
+  │       c. matchesExclusionFilter(title, excludeKeywords)     episodeChecker.ts
+  │            → if matched: setVideoRecord(..., 'excluded'), continue
+  │       d. First unregistered non-excluded video = episodeToPost
+  │          Remaining unregistered videos → setVideoRecord(..., 'skipped')
   │
   ├─ 5. generateEpisodePost(apiKey, episode, systemPrompt, model)  llmClient.ts
-  │       POST OpenAI-compat endpoint  → parse first line = title, rest = body
+  │       POST OpenAI-compat endpoint → parse first line = title, rest = body
   │
   ├─ 6. Assemble final body:
   │       [prependText, rawBody, videoLink?, appendText].filter(Boolean).join('\n\n')
   │
-  ├─ 7. createEpisodePost(reddit, subredditName, title, body)   postManager.ts
+  ├─ 7. createEpisodePost(reddit, subredditName, title, url, body)  postManager.ts
+  │       Submits a link post: url = episode.link, text = assembled body
   ├─ 8. applyFlair(...)           (if flairName set)            postManager.ts
   ├─ 9. applyBotFlair(...)        (if emoji or text set)        postManager.ts
   ├─ 10. managePins(reddit, redis, post.id)                     postManager.ts
   │       Unpin previous (Redis `last_episode_post_id`), pin new post → slot 1
   │
-  └─ 11. Persist: redis.set('last_episode_guid', episode.guid)
+  └─ 11. Persist: setVideoRecord(redis, episode.guid, { status: 'posted', postId })
+                  redis.set('last_episode_guid', episode.guid)   ← legacy compat
                   redis.set('last_episode_post_id', post.id)
 ```
 
 ### Regeneration flow (mod menu → "Regenerate latest post")
 
-Re-runs Gemini for the already-processed video and calls `updateEpisodePost` to edit the existing post body. Does **not** re-submit, re-flair, or re-pin. Uses `fetchYouTubeVideoById` (looks up by video ID directly) rather than the playlist.
+Re-runs Gemini for the already-processed video and calls `updateEpisodePost` to edit the existing post body text. Does **not** re-submit, re-flair, or re-pin. Uses `fetchYouTubeVideoById` (looks up by video ID directly) rather than the playlist.
 
 ---
 
@@ -105,11 +115,11 @@ interface GeneratedPost {
 
 | Function | Signature | Purpose |
 |---|---|---|
-| `fetchLatestYouTubeEpisode` | `(apiKey, playlistId) → Promise<EpisodeData \| null>` | Fetches all items from a playlist (`maxResults=50`), sorts by `publishedAt` descending, returns newest |
+| `fetchPlaylistVideos` | `(apiKey, playlistId) → Promise<EpisodeData[]>` | Fetches up to 50 items from a playlist, sorts by `publishedAt` descending, returns all as an array. Silently converts `UC...` channel IDs to `UU...` uploads playlist IDs. |
 | `fetchYouTubeVideoById` | `(apiKey, videoId) → Promise<EpisodeData \| null>` | Used by the regeneration flow when the video ID is already known |
-| `isNewEpisode` | `(redis, episode) → Promise<boolean>` | Compares `episode.guid` against Redis key `last_episode_guid` |
+| `matchesExclusionFilter` | `(title, keywords) → boolean` | Returns true if the title contains any comma-separated keyword (case-insensitive) |
 
-**Key detail:** The playlist endpoint returns up to 50 items in API order, which is not necessarily chronological. The module sorts them by `publishedAt` before selecting the newest — do not remove this sort.
+**Key detail:** The playlist endpoint returns up to 50 items in API order, which is not necessarily chronological. The module sorts them by `publishedAt` before returning — do not remove this sort. The Uploads playlist (`UU...`) is always newest-first from the API, making the sort a no-op, but it is kept for correctness when a non-uploads playlist is used.
 
 ---
 
@@ -150,7 +160,7 @@ This is the **OpenAI-compatible** endpoint, not the native Gemini endpoint (`/v1
 
 | Function | Purpose |
 |---|---|
-| `createEpisodePost(reddit, subredditName, title, body)` | Calls `reddit.submitPost` (self/text post) |
+| `createEpisodePost(reddit, subredditName, title, url, body)` | Submits a **link post** — `url` is the YouTube video link, `body` is the generated text. The `text` field is not in Devvit's `SubmitLinkOptions` type but is accepted by the Reddit API. |
 | `updateEpisodePost(reddit, postId, body)` | Fetches post then calls `.edit({ text: body })` |
 | `applyBotFlair(reddit, subredditName, emoji, text)` | Sets author flair on the app's own account; skips if both emoji and text are empty |
 | `applyFlair(reddit, subredditName, postId, flairName)` | Case-insensitive flair template name match; logs error and continues if no match found |
@@ -170,7 +180,7 @@ This is the **OpenAI-compatible** endpoint, not the native Gemini endpoint (`/v1
 - Registers the `check_new_episodes` scheduler job (the core pipeline)
 - Registers the `regenerate_latest_post` scheduler job
 - Registers the `AppInstall` trigger (schedules the cron, cancels any previous job first for idempotency)
-- Registers two mod menu items: "Set Google API Key" and "Check for new videos" and "Regenerate latest post"
+- Registers four mod menu items: "Set Google API Key", "Check for new videos", "Force post latest video (testing)", and "Regenerate latest post"
 - Exports `default Devvit` (required by Devvit platform)
 
 ---
@@ -181,12 +191,13 @@ All settings use `SettingScope.Installation`. Each subreddit configures its own 
 
 | Key | Type | Required | Default | Notes |
 |---|---|---|---|---|
-| `youtubePlaylistId` | string | Yes | — | The `list=` portion of a YouTube playlist URL |
+| `youtubePlaylistId` | string | Yes | — | Playlist ID (`PLxxx`) or channel ID (`UCxxx`) to monitor. Channel IDs are auto-converted to the corresponding Uploads playlist (`UUxxx`). |
+| `excludeTitleKeywords` | string | No | `''` | Comma-separated keywords; videos whose titles match any are permanently skipped |
 | `geminiModel` | string | No | `gemini-2.0-flash` | Any model ID supported by the OpenAI-compat endpoint |
 | `systemPrompt` | paragraph | Yes | — | Full system prompt for Gemini. First line of model output = post title |
 | `botFlairEmoji` | string | No | `''` | Emoji portion of the bot's author flair |
 | `botFlairText` | string | No | `''` | Text portion of the bot's author flair |
-| `videoLinkLabel` | string | No | `''` | If set, inserts `[label](videoUrl)` between rawBody and appendText |
+| `videoLinkLabel` | string | No | `''` | If set, inserts `[label](videoUrl)` between rawBody and appendText in the post body |
 | `prependText` | paragraph | No | `''` | Prepended to final post body |
 | `appendText` | paragraph | No | `''` | Appended to final post body |
 | `flairName` | string | No | `''` | Exact post flair template name (case-insensitive match) |
@@ -200,11 +211,15 @@ The Google API key (`google_api_key`) is **not** a Devvit setting. It is stored 
 | Key | Type | Written by | Read by | Purpose |
 |---|---|---|---|---|
 | `google_api_key` | string | `apiKeyForm` handler | `check_new_episodes`, `regenerate_latest_post` | Google API key for both YouTube and Gemini |
-| `last_episode_guid` | string | `check_new_episodes` (step 11) | `isNewEpisode` (step 4) | Deduplication — YouTube video ID of last processed video |
+| `video_registry` | hash | `check_new_episodes` (step 4, 11) | `check_new_episodes` (step 4) | Hash of videoId → `VideoRecord` JSON. Tracks every seen video with status `posted`, `excluded`, or `skipped`. |
+| `last_episode_guid` | string | `check_new_episodes` (step 11) | `regenerate_latest_post` | Legacy: YouTube video ID of last posted video — kept for backwards compatibility |
 | `last_episode_post_id` | string | `check_new_episodes` (step 11) | `managePins`, `regenerate_latest_post` | Reddit post ID of the currently pinned post |
 | `episode_checker_job_id` | string | `AppInstall` trigger | `AppInstall` trigger | Scheduler job ID, used to cancel and re-create on reinstall |
+| `force_repost` | string (`'1'`) | "Force post latest video" menu item | `check_new_episodes` (step 4a) | One-shot flag: skip registry check for the newest video on the next run. Deleted immediately when read. |
+| `check_triggered_by` | string | "Check for new videos" / "Force post" menu items | `check_new_episodes` error handler | Username of the mod who manually triggered; used to send a PM on failure |
+| `regenerate_triggered_by` | string | "Regenerate latest post" menu item | `regenerate_latest_post` error handler | Username of the mod who triggered regeneration; used to send a PM on failure |
 
-**Resetting state:** To reprocess the latest video (e.g., after a bad run), delete `last_episode_guid` from Redis. The next check will treat the existing newest video as new and create a post for it.
+**Resetting state:** To force a repost of the latest video, use the "Force post latest video (testing)" mod menu item. To manually clear a video from the registry, delete its field from the `video_registry` hash in Redis.
 
 ---
 
@@ -231,7 +246,7 @@ The `AppInstall` trigger cancels any existing job ID before scheduling a new one
 
 5. **`SettingScope.Installation` is required** for all per-subreddit settings. `SettingScope.App` is for developer-owned secrets shared across all installs — deliberately not used here.
 
-6. **`reddit.submitPost` creates a self (text) post.** There is no link post in this codebase. The `body` field maps to the `text` field of `submitPost`.
+6. **`reddit.submitPost` creates a link post.** The `url` field is the YouTube video URL. The `text` field (post body) is not declared in Devvit's `SubmitLinkOptions` type but is accepted by the Reddit API — no type suppression is needed in practice.
 
 ---
 

@@ -7,13 +7,13 @@ Demo: <https://www.youtube.com/watch?v=Xdm_pJxI6Yo>
 ## What it does
 
 - **Monitors a YouTube playlist** every 30 minutes via a scheduled job
-- **Detects new videos** using Redis to track the last-seen video ID
+- **Detects new videos** using a per-video Redis registry to track every seen video
 - **Calls Gemini** with video metadata and a mod-supplied system prompt to generate a discussion post
-- **Submits the post** to the subreddit with optional flair
-- **Rotates the pin** -- stickies the new post and unstickies the previous one
+- **Submits a link post** to the subreddit — the post links directly to the YouTube video, with the generated text as the post body
+- **Rotates the pin** — pins the new post and unpins the previous one
 - **Notifies the triggering mod by PM** if a manually triggered action fails
 
-Moderator menu items let mods trigger an immediate check ("Check for new videos") or regenerate the latest post ("Regenerate latest post") at any time. If either of these manual actions fails, the mod who triggered it receives a Reddit private message with the error details. Scheduled (cron) runs are self-healing — because `last_episode_guid` is only persisted on success, the next 30-minute tick automatically retries any failed run without mod intervention.
+Moderator menu items let mods trigger an immediate check ("Check for new videos"), force a re-post of the latest video bypassing deduplication ("Force post latest video (testing)"), or regenerate the body of the latest post ("Regenerate latest post"). If any manual action fails, the triggering mod receives a Reddit PM with the error details. Scheduled (cron) runs are self-healing — state is only persisted on success, so the next 30-minute tick retries automatically.
 
 ## API Key
 
@@ -41,4 +41,4 @@ All settings are configured per subreddit in the app's installation settings.
 
 ## Developers
 
-See the [Developer](DEVELOP.md) docs on the GitHub.
+See the [Developer](https://github.com/HeyItsGilbert/YouTubeGeminiPostDevvit/blob/main/DEVELOP.md) docs on the GitHub.

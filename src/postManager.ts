@@ -8,17 +8,20 @@ type RedisClient = Devvit.Context['redis'];
 // ----- Post creation --------------------------------------------------------
 
 /**
- * Submit a plain-text (self) post to the subreddit and return the new Post.
+ * Submit a link post pointing to the episode URL with generated body text.
+ * The `text` field is undocumented on link posts but accepted by the API.
  */
 export async function createEpisodePost(
   reddit: RedditClient,
   subredditName: string,
   title: string,
+  url: string,
   body: string
 ) {
   const post = await reddit.submitPost({
     title,
     subredditName,
+    url,
     text: body,
   });
   return post;
@@ -55,7 +58,7 @@ export async function applyBotFlair(
 // ----- Post editing ---------------------------------------------------------
 
 /**
- * Edit the body of an existing post.
+ * Edit the body text of an existing post.
  */
 export async function updateEpisodePost(
   reddit: RedditClient,
