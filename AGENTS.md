@@ -18,10 +18,14 @@ src/
                     and the AppInstall trigger. Owns the top-level orchestration loop.
   episodeChecker.ts YouTube Data API v3 client. Fetches playlists and individual
                     videos. Contains the exclusion-keyword filter.
-  llmClient.ts      Gemini API client (via OpenAI-compatible endpoint). Parses
-                    structured title/body from the model's raw text output.
+  llmClient.ts      Gemini API client (via OpenAI-compatible endpoint). Delegates
+                    message building and response parsing to postUtils.ts.
   postManager.ts    Reddit operations: post submission (link post), flair application,
                     bot author flair, post editing, and pin rotation.
+  postUtils.ts      Platform-agnostic pure utilities shared with the preview web app:
+                    resolvePlaylistId, buildUserMessage, parseGeneratedResponse,
+                    assemblePostBody. No Devvit or browser dependencies — safe to
+                    import from both runtimes.
   videoRegistry.ts  Redis hash-backed registry of every video the bot has seen.
                     Stores status (posted/excluded/skipped) and postId per video ID.
   types.ts          Shared interfaces: EpisodeData, GeneratedPost, VideoRecord.
@@ -29,8 +33,13 @@ src/
 devvit.json         App manifest. Declares entry point and allowed HTTP domains.
 package.json        Build scripts and dependencies.
 tsconfig.json       TypeScript config (module:ESNext, moduleResolution:Bundler).
+netlify.toml        Netlify deploy config for the preview web app (base: preview-site/).
 SystemPrompt.example.md
                     Sample mod-facing system prompt for Gemini — copy and adapt.
+preview-site/
+                    React + Vite web app for previewing generated posts before
+                    deploying the bot. Imports shared logic from src/postUtils.ts
+                    and src/types.ts via the @shared path alias.
 ```
 
 ---
@@ -109,13 +118,28 @@ interface GeneratedPost {
 
 ---
 
+### `src/postUtils.ts`
+
+Platform-agnostic pure utilities. **No Devvit APIs, no browser-only globals.** Safe to import from both the Devvit runtime and the preview web app.
+
+| Export | Signature | Purpose |
+|---|---|---|
+| `resolvePlaylistId` | `(playlistId) → string` | Converts a `UC...` channel ID to its `UU...` uploads playlist ID; passes other IDs through unchanged. Used by both `episodeChecker.ts` and the preview app's playlist fetch. |
+| `buildUserMessage` | `(episode) → string` | Assembles the user-turn message sent to Gemini. Conditionally includes `Episode Number` and `Link` fields. |
+| `parseGeneratedResponse` | `(fullText, fallbackTitle) → GeneratedPost` | Splits raw Gemini output into title (first non-empty line) and body (everything after). |
+| `assemblePostBody` | `(prependText, rawBody, videoLinkLabel, videoUrl, appendText) → string` | Joins the body parts with `\n\n`, inserting a markdown link only when both label and URL are non-empty. |
+
+**Rule:** Keep this file free of platform-specific imports. If a function needs to grow a Devvit or browser dependency, move it out of `postUtils.ts` into the appropriate module instead.
+
+---
+
 ### `src/episodeChecker.ts`
 
 **Exported functions:**
 
 | Function | Signature | Purpose |
 |---|---|---|
-| `fetchPlaylistVideos` | `(apiKey, playlistId) → Promise<EpisodeData[]>` | Fetches up to 50 items from a playlist, sorts by `publishedAt` descending, returns all as an array. Silently converts `UC...` channel IDs to `UU...` uploads playlist IDs. |
+| `fetchPlaylistVideos` | `(apiKey, playlistId) → Promise<EpisodeData[]>` | Fetches up to 50 items from a playlist, sorts by `publishedAt` descending, returns all as an array. Delegates UC→UU conversion to `resolvePlaylistId` in `postUtils.ts`. |
 | `fetchYouTubeVideoById` | `(apiKey, videoId) → Promise<EpisodeData \| null>` | Used by the regeneration flow when the video ID is already known |
 | `matchesExclusionFilter` | `(title, keywords) → boolean` | Returns true if the title contains any comma-separated keyword (case-insensitive) |
 
@@ -279,13 +303,7 @@ Edit `generateEpisodePost` in `src/llmClient.ts`. The `model` and `max_tokens` f
 
 ### Change the post body assembly order
 
-The body is assembled in `check_new_episodes` in `src/main.ts`:
-
-```typescript
-const body = [prependText, rawBody, videoLink, appendText].filter(Boolean).join('\n\n');
-```
-
-Edit the array order or separator here.
+The body is assembled by `assemblePostBody` in `src/postUtils.ts`. Both `check_new_episodes` and `regenerate_latest_post` in `src/main.ts` call this function, as does the preview web app. Edit the function there and the change applies everywhere.
 
 ### Add a new mod menu item
 
@@ -305,7 +323,7 @@ Currently one playlist ID per subreddit installation. To fan out, the `check_new
 
 - Module system: `"type": "module"` in `package.json`. All imports use `.js` extensions (even for `.ts` source files) per Node ESM + TypeScript bundler conventions.
 - `tsconfig.json` uses `"moduleResolution": "Bundler"` (Devvit requirement).
-- Compiled `.js` files are committed alongside `.ts` sources. When editing `.ts` files, run `npm run type-check` to verify, and ensure `.js` outputs are updated.
+- Compiled `.js` files are **not committed** (`src/*.js` is gitignored). Devvit compiles TypeScript during `devvit upload`. Run `npm run type-check` to verify types locally before deploying.
 - The `devDependencies` include `dotenv-cli` to inject a `.env` file during `devvit playtest` (the `dev` script). Create a `.env` file if needed for local playtest overrides — it is gitignored.
 
 ---
@@ -321,6 +339,24 @@ Currently one playlist ID per subreddit installation. To fan out, the `check_new
 
 ---
 
+## Preview web app (`preview-site/`)
+
+A React + Vite SPA that lets mods preview what Gemini will generate before deploying the bot. It is a pure client-side app — no server required.
+
+**Shared code:** The preview app imports `EpisodeData`, `GeneratedPost` from `src/types.ts` and all four utilities from `src/postUtils.ts` via the `@shared` path alias (configured in `preview-site/vite.config.ts` and `tsconfig.json`). **Never re-declare these types or functions inside the preview app** — edit the shared source.
+
+**Netlify deployment:** Configured in `netlify.toml` at the repo root. Base dir is `preview-site`, publish dir is `dist`. Do **not** set `GEMINI_API_KEY` as a Netlify env var — it would be baked into the public JS bundle. Users supply their own key via the UI; it is stored in `localStorage`.
+
+**Preview app commands** (run from `preview-site/`):
+
+| Command | Effect |
+|---|---|
+| `npm run dev` | Vite dev server on port 3000 |
+| `npm run build` | Production build to `dist/` |
+| `npm run lint` | TypeScript type check (no emit) |
+
+---
+
 ## What not to change without careful review
 
 - **The Gemini HTTP endpoint URL** in `llmClient.ts` — the OpenAI-compatible path is required by the Devvit HTTP proxy.
@@ -328,6 +364,7 @@ Currently one playlist ID per subreddit installation. To fan out, the `check_new
 - **The `AppInstall` trigger's cancel-before-reschedule pattern** — removing this causes duplicate jobs on reinstall.
 - **The Redis key names** — changing them invalidates deduplication state for all existing installs mid-operation.
 - **`export default Devvit`** in `main.ts` — required by the Devvit runtime entry point contract.
+- **The signatures of exported functions in `src/postUtils.ts`** — both the Devvit app and the preview web app call these functions. A signature change must be applied to both call sites simultaneously.
 
 ---
 

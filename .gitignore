@@ -1,2 +1,7 @@
 node_modules
 src/*.js
+
+# Preview app build artifacts
+preview-site/node_modules/
+preview-site/dist/
+preview-site/.env

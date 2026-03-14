@@ -1,0 +1,9 @@
+[build]
+  base    = "preview-site"
+  command = "npm install && npm run build"
+  publish = "dist"
+
+[build.environment]
+  # Do NOT set GEMINI_API_KEY here — users supply their own key via the UI.
+  # Setting it here would bake it into the public JS bundle.
+  NODE_VERSION = "20"

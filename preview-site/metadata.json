@@ -1,0 +1,5 @@
+{
+  "name": "YouTube Gemini Post Preview",
+  "description": "Preview Gemini-generated Reddit posts for YouTube videos, based on the YouTubeGeminiPostDevvit app.",
+  "requestFramePermissions": []
+}

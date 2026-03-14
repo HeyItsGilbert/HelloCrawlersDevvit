@@ -1,4 +1,5 @@
 import { type EpisodeData } from './types.js';
+import { resolvePlaylistId } from './postUtils.js';
 
 const YT_API_BASE = 'https://youtube.googleapis.com/youtube/v3';
 
@@ -13,19 +14,6 @@ interface YouTubePlaylistResponse {
       };
     };
   }>;
-}
-
-/**
- * If the caller supplies a YouTube channel ID (starts with "UC"),
- * convert it to the corresponding Uploads playlist ID ("UU...").
- * The Uploads playlist is always sorted newest-first by the API,
- * which avoids the need for client-side sorting and extra pages.
- */
-function resolvePlaylistId(playlistId: string): string {
-  if (playlistId.startsWith('UC')) {
-    return 'UU' + playlistId.slice(2);
-  }
-  return playlistId;
 }
 
 /**

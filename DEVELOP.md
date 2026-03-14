@@ -8,7 +8,14 @@ src/
   episodeChecker.ts    -- YouTube Data API: fetch latest video from playlist
   llmClient.ts         -- Gemini API: generate post with mod-supplied prompt
   postManager.ts       -- Reddit post creation, flair, pin management
-  types.ts             -- Shared TypeScript types (EpisodeData, GeneratedPost)
+  postUtils.ts         -- Shared pure utilities (no Devvit/browser deps):
+                          resolvePlaylistId, buildUserMessage,
+                          parseGeneratedResponse, assemblePostBody
+  videoRegistry.ts     -- Redis-backed registry of processed videos
+  types.ts             -- Shared TypeScript types (EpisodeData, GeneratedPost, VideoRecord)
+
+preview-site/  -- React + Vite preview web app (deployed to Netlify)
+netlify.toml                  -- Netlify deploy config (base: preview-site/)
 ```
 
 ## 1. Install dependencies
@@ -62,11 +69,16 @@ Both `youtube.googleapis.com` and `generativelanguage.googleapis.com` are on the
 
 # Redis keys
 
-| Key                      | Purpose                                          |
-|--------------------------|--------------------------------------------------|
-| `last_episode_guid`      | Video ID of last processed video (deduplication) |
-| `last_episode_post_id`   | Reddit post ID of currently pinned post          |
-| `episode_checker_job_id` | Scheduler job ID (used for clean re-install)     |
+| Key                       | Purpose                                                          |
+|---------------------------|------------------------------------------------------------------|
+| `google_api_key`          | Google API key (set via mod menu, not stored in settings)        |
+| `video_registry`          | Hash of videoId → VideoRecord JSON (deduplication + status)      |
+| `last_episode_guid`       | Video ID of last posted video (legacy, kept for compat)          |
+| `last_episode_post_id`    | Reddit post ID of currently pinned post                          |
+| `episode_checker_job_id`  | Scheduler job ID (used for clean re-install)                     |
+| `force_repost`            | One-shot flag: skip registry check for newest video next run     |
+| `check_triggered_by`      | Mod username — used to PM on failure after manual trigger        |
+| `regenerate_triggered_by` | Mod username — used to PM on failure after regeneration trigger  |
 
 # Learn more
 

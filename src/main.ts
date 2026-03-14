@@ -4,6 +4,7 @@ import { fetchPlaylistVideos, fetchYouTubeVideoById, matchesExclusionFilter } fr
 import { generateEpisodePost } from "./llmClient.js";
 import { createEpisodePost, updateEpisodePost, applyBotFlair, applyFlair, managePins } from "./postManager.js";
 import { getVideoRecord, setVideoRecord } from "./videoRegistry.js";
+import { assemblePostBody, applyPlaceholders } from "./postUtils.js";
 
 Devvit.configure({
   redditAPI: true,
@@ -258,8 +259,13 @@ Devvit.addSchedulerJob({
       const { title, body: rawBody } = await generateEpisodePost(googleApiKey, episode, systemPrompt, geminiModel);
       console.log(`[bot] Generated title: "${title}"`);
 
-      const videoLink = videoLinkLabel && episode.link ? `[${videoLinkLabel}](${episode.link})` : '';
-      const body = [prependText, rawBody, videoLink, appendText].filter(Boolean).join('\n\n');
+      const body = assemblePostBody(
+        applyPlaceholders(prependText, episode),
+        rawBody,
+        applyPlaceholders(videoLinkLabel, episode),
+        episode.link,
+        applyPlaceholders(appendText, episode),
+      );
 
       // 7. Submit the link post (URL = episode video link, body = generated text)
       const post = await createEpisodePost(reddit, subredditName, title, episode.link, body);
@@ -435,8 +441,13 @@ Devvit.addSchedulerJob({
       console.log(`[bot] Regenerating post for "${episode.title}"...`);
       const { body: rawBody } = await generateEpisodePost(googleApiKey, episode, systemPrompt, geminiModel);
 
-      const videoLink = videoLinkLabel && episode.link ? `[${videoLinkLabel}](${episode.link})` : '';
-      const body = [prependText, rawBody, videoLink, appendText].filter(Boolean).join('\n\n');
+      const body = assemblePostBody(
+        applyPlaceholders(prependText, episode),
+        rawBody,
+        applyPlaceholders(videoLinkLabel, episode),
+        episode.link,
+        applyPlaceholders(appendText, episode),
+      );
 
       await updateEpisodePost(reddit, postId, body);
       await applyBotFlair(reddit, context.subredditName!, botFlairEmoji, botFlairText);
