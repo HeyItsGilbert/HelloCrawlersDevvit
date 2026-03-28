@@ -158,6 +158,40 @@ interface PendingPost {
 }
 
 // ---------------------------------------------------------------------------
+// Failure notification helper
+// ---------------------------------------------------------------------------
+
+type RedditClient = Devvit.Context['reddit'];
+
+/**
+ * Send a failure PM to the appropriate recipients.
+ *
+ * Priority: if notificationMods are configured, PM each of them.
+ * Otherwise fall back to the individual mod who triggered the action
+ * (fallbackRecipient). If neither is available, only log — never throws.
+ */
+async function sendFailureNotification(
+  reddit: RedditClient,
+  notificationMods: string[],
+  fallbackRecipient: string | null | undefined,
+  subject: string,
+  text: string,
+): Promise<void> {
+  const recipients = notificationMods.length > 0
+    ? notificationMods
+    : (fallbackRecipient ? [fallbackRecipient] : []);
+
+  for (const recipient of recipients) {
+    try {
+      await reddit.sendPrivateMessage({ to: recipient, subject, text });
+      console.log(`[bot] Sent failure notification PM to u/${recipient}`);
+    } catch (pmErr) {
+      console.error(`[bot] Failed to send failure notification to u/${recipient}: ${pmErr}`);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Google API key management — stored in Redis, set via mod menu
 // ---------------------------------------------------------------------------
 
@@ -258,6 +292,8 @@ Devvit.addSchedulerJob({
   name: 'check_new_episodes',
   onRun: async (_event, context) => {
     const { redis, reddit, settings } = context;
+    // Hoisted so the catch block can reference it even if an early error occurs
+    let notificationMods: string[] = [];
 
     try {
       // 1. Read all settings
@@ -275,7 +311,7 @@ Devvit.addSchedulerJob({
       const requireModApproval = (await settings.get<boolean>('requireModApproval')) ?? false;
       const autoApproveWindowMinutes = (await settings.get<number>('autoApproveWindowMinutes')) ?? 0;
       const notificationModsSetting = (await settings.get<string>('notificationMods')) || '';
-      const notificationMods = notificationModsSetting.split(',').map(u => u.trim()).filter(Boolean);
+      notificationMods = notificationModsSetting.split(',').map(u => u.trim()).filter(Boolean);
 
       // 2. Validate required settings
       if (!googleApiKey) {
@@ -483,18 +519,13 @@ Devvit.addSchedulerJob({
     } catch (err) {
       console.error(`[bot] Video checker failed: ${err}`);
       const triggeredBy = await redis.get('check_triggered_by');
-      if (triggeredBy) {
-        try {
-          await reddit.sendPrivateMessage({
-            to: triggeredBy,
-            subject: 'Video check failed',
-            text: `Hi u/${triggeredBy},\n\nThe video check you triggered on r/${context.subredditName!} failed with the following error:\n\n    ${err}\n\nPlease try again later. If the error persists, check the app logs for more details.`,
-          });
-          console.log(`[bot] Sent error notification PM to u/${triggeredBy}`);
-        } catch (pmErr) {
-          console.error(`[bot] Failed to send error notification PM: ${pmErr}`);
-        }
-      }
+      await sendFailureNotification(
+        reddit,
+        notificationMods,
+        triggeredBy,
+        'Video check failed',
+        `The video check on r/${context.subredditName!} failed with the following error:\n\n    ${err}\n\nPlease try again later. If the error persists, check the app logs for more details.`,
+      );
     }
   },
 });
@@ -508,6 +539,7 @@ Devvit.addSchedulerJob({
   name: 'post_pending_episode',
   onRun: async (_event, context) => {
     const { redis, reddit, settings } = context;
+    let notificationMods: string[] = [];
 
     try {
       const pendingJson = await redis.get(REDIS_KEY_PENDING_POST);
@@ -523,6 +555,8 @@ Devvit.addSchedulerJob({
       const flairName = (await settings.get<string>('flairName')) || '';
       const botFlairEmoji = (await settings.get<string>('botFlairEmoji')) || '';
       const botFlairText = (await settings.get<string>('botFlairText')) || '';
+      const notificationModsSetting = (await settings.get<string>('notificationMods')) || '';
+      notificationMods = notificationModsSetting.split(',').map(u => u.trim()).filter(Boolean);
 
       console.log(`[bot] Posting pending episode: "${pending.title}"`);
       const post = await createEpisodePost(reddit, subredditName, pending.title, pending.url, pending.body);
@@ -551,15 +585,13 @@ Devvit.addSchedulerJob({
     } catch (err) {
       console.error(`[bot] Failed to post pending episode: ${err}`);
       const triggeredBy = await redis.get('check_triggered_by');
-      if (triggeredBy) {
-        try {
-          await reddit.sendPrivateMessage({
-            to: triggeredBy,
-            subject: 'Episode post failed',
-            text: `Hi u/${triggeredBy},\n\nFailed to post the pending episode on r/${context.subredditName} with error:\n\n    ${err}\n\nThe episode content is still saved. Try using "Post pending episode" in Mod Tools to retry.`,
-          });
-        } catch (_) {}
-      }
+      await sendFailureNotification(
+        reddit,
+        notificationMods,
+        triggeredBy,
+        'Episode post failed',
+        `Failed to post the pending episode on r/${context.subredditName} with error:\n\n    ${err}\n\nThe episode content is still saved. Try using "Post pending episode" in Mod Tools to retry.`,
+      );
     }
   },
 });
@@ -725,8 +757,12 @@ Devvit.addSchedulerJob({
   name: 'regenerate_latest_post',
   onRun: async (_event, context) => {
     const { redis, reddit, settings } = context;
+    let notificationMods: string[] = [];
 
     try {
+      const notificationModsSetting = (await settings.get<string>('notificationMods')) || '';
+      notificationMods = notificationModsSetting.split(',').map(u => u.trim()).filter(Boolean);
+
       const postId = await redis.get('last_episode_post_id');
       const videoId = await redis.get('last_episode_guid');
 
@@ -773,18 +809,13 @@ Devvit.addSchedulerJob({
     } catch (err) {
       console.error(`[bot] Regeneration failed: ${err}`);
       const triggeredBy = await redis.get('regenerate_triggered_by');
-      if (triggeredBy) {
-        try {
-          await reddit.sendPrivateMessage({
-            to: triggeredBy,
-            subject: 'Post regeneration failed',
-            text: `Hi u/${triggeredBy},\n\nThe post regeneration you triggered on r/${context.subredditName} failed with the following error:\n\n    ${err}\n\nPlease try again later. If the error persists, check the app logs for more details.`,
-          });
-          console.log(`[bot] Sent error notification PM to u/${triggeredBy}`);
-        } catch (pmErr) {
-          console.error(`[bot] Failed to send error notification PM: ${pmErr}`);
-        }
-      }
+      await sendFailureNotification(
+        reddit,
+        notificationMods,
+        triggeredBy,
+        'Post regeneration failed',
+        `The post regeneration on r/${context.subredditName} failed with the following error:\n\n    ${err}\n\nPlease try again later. If the error persists, check the app logs for more details.`,
+      );
     }
   },
 });
