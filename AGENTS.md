@@ -228,7 +228,8 @@ All settings use `SettingScope.Installation`. Each subreddit configures its own 
 | `prependText` | paragraph | No | `''` | Prepended to final post body |
 | `appendText` | paragraph | No | `''` | Appended to final post body |
 | `flairName` | string | No | `''` | Exact post flair template name (case-insensitive match) |
-| `requireModApproval` | boolean | No | `false` | When true, generated posts are stored in Redis and a modmail notification is sent instead of posting immediately. Mods use the "Post pending episode" or "Edit & Post pending episode" menu items to publish. |
+| `notificationMods` | string | No | `''` | Comma-separated Reddit usernames to notify when a post is queued (e.g. `"alice, bob"`). Each user receives a PM. When blank, notification goes to the general mod inbox via `createModInboxConversation`. Only applies when `requireModApproval` is true. |
+| `requireModApproval` | boolean | No | `false` | When true, generated posts are stored in Redis and a notification is sent instead of posting immediately. Mods use the "Post pending episode" or "Edit & Post pending episode" menu items to publish. |
 | `autoApproveWindowMinutes` | number | No | `0` | Only applies when `requireModApproval` is true. When > 0, schedules a `post_pending_episode` job to auto-publish after this many minutes if no mod acts first. Set to `0` for indefinite hold. |
 
 The Google API key (`google_api_key`) is **not** a Devvit setting. It is stored directly in Redis via the "Set Google API Key" mod menu form, keeping it out of the visible Devvit settings UI.

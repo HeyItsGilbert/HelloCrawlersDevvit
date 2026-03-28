@@ -110,6 +110,14 @@ Devvit.addSettings([
 
   // --- Approval Gate ---
   {
+    type: 'string',
+    name: 'notificationMods',
+    label: 'Notification Recipients (optional)',
+    helpText: 'Comma-separated Reddit usernames to notify when a post is queued for approval (e.g. "alice, bob"). Leave blank to send to the general mod inbox instead.',
+    defaultValue: '',
+    scope: SettingScope.Installation,
+  },
+  {
     type: 'boolean',
     name: 'requireModApproval',
     label: 'Hold posts for mod approval',
@@ -266,6 +274,8 @@ Devvit.addSchedulerJob({
       const flairName = (await settings.get<string>('flairName')) || '';
       const requireModApproval = (await settings.get<boolean>('requireModApproval')) ?? false;
       const autoApproveWindowMinutes = (await settings.get<number>('autoApproveWindowMinutes')) ?? 0;
+      const notificationModsSetting = (await settings.get<string>('notificationMods')) || '';
+      const notificationMods = notificationModsSetting.split(',').map(u => u.trim()).filter(Boolean);
 
       // 2. Validate required settings
       if (!googleApiKey) {
@@ -390,38 +400,57 @@ Devvit.addSchedulerJob({
           console.log('[bot] Post queued pending explicit mod approval.');
         }
 
-        // Send modmail notification (non-fatal — post is safely stored in Redis regardless)
-        try {
-          const sub = await reddit.getSubredditByName(subredditName);
-          const autoApproveNote = autoApproveWindowMinutes > 0
-            ? `\n\nThis post will **auto-publish in ${autoApproveWindowMinutes} minute${autoApproveWindowMinutes === 1 ? '' : 's'}** if no mod takes action.`
-            : '';
-          await reddit.modMail.createModInboxConversation({
-            subredditId: sub.id,
-            subject: `New episode ready: ${title}`,
-            bodyMarkdown: [
-              `**New episode ready to review:**`,
-              ``,
-              `**Title:** ${title}`,
-              ``,
-              `---`,
-              ``,
-              body.length > 1000 ? body.slice(0, 1000) + '\n\n*(preview truncated)*' : body,
-              ``,
-              `---`,
-              ``,
-              `**Video:** ${episode.link}`,
-              ``,
-              `Use **Mod Tools** on r/${subredditName} to take action:`,
-              `- **"Post pending episode"** — publish as-is`,
-              `- **"Edit & Post pending episode"** — edit title/body before publishing`,
-              `- **"Cancel pending episode"** — discard this post`,
-              autoApproveNote,
-            ].join('\n'),
-          });
-          console.log('[bot] Sent modmail notification for pending post.');
-        } catch (mailErr) {
-          console.error(`[bot] Failed to send modmail notification: ${mailErr}`);
+        // Send notification (non-fatal — post is safely stored in Redis regardless)
+        const autoApproveNote = autoApproveWindowMinutes > 0
+          ? `\n\nThis post will **auto-publish in ${autoApproveWindowMinutes} minute${autoApproveWindowMinutes === 1 ? '' : 's'}** if no mod takes action.`
+          : '';
+        const notificationBodyMarkdown = [
+          `**New episode ready to review:**`,
+          ``,
+          `**Title:** ${title}`,
+          ``,
+          `---`,
+          ``,
+          body.length > 1000 ? body.slice(0, 1000) + '\n\n*(preview truncated)*' : body,
+          ``,
+          `---`,
+          ``,
+          `**Video:** ${episode.link}`,
+          ``,
+          `Use **Mod Tools** on r/${subredditName} to take action:`,
+          `- **"Post pending episode"** — publish as-is`,
+          `- **"Edit & Post pending episode"** — edit title/body before publishing`,
+          `- **"Cancel pending episode"** — discard this post`,
+          autoApproveNote,
+        ].join('\n');
+
+        if (notificationMods.length > 0) {
+          // Notify each listed mod via private message
+          for (const modUsername of notificationMods) {
+            try {
+              await reddit.sendPrivateMessage({
+                to: modUsername,
+                subject: `New episode ready: ${title}`,
+                text: notificationBodyMarkdown,
+              });
+              console.log(`[bot] Sent pending-post notification PM to u/${modUsername}`);
+            } catch (pmErr) {
+              console.error(`[bot] Failed to send notification PM to u/${modUsername}: ${pmErr}`);
+            }
+          }
+        } else {
+          // Fall back to general mod inbox via modmail
+          try {
+            const sub = await reddit.getSubredditByName(subredditName);
+            await reddit.modMail.createModInboxConversation({
+              subredditId: sub.id,
+              subject: `New episode ready: ${title}`,
+              bodyMarkdown: notificationBodyMarkdown,
+            });
+            console.log('[bot] Sent modmail notification for pending post.');
+          } catch (mailErr) {
+            console.error(`[bot] Failed to send modmail notification: ${mailErr}`);
+          }
         }
 
         return;
