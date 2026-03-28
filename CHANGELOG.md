@@ -6,20 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.0] 2026-03-28
+
 ### Added
 
-- Mod approval gate: new `requireModApproval` setting holds generated posts for mod review instead of posting immediately. Mods publish via "Post pending episode", "Edit & Post pending episode", or discard with "Cancel pending episode" menu items.
-- Auto-approve window: new `autoApproveWindowMinutes` setting auto-publishes queued posts after a configurable delay if no mod acts first. Set to 0 for indefinite hold.
-- Edit before posting: "Edit & Post pending episode" opens a form pre-populated with the generated title and body so mods can tweak content before publishing.
-- Notification recipients: new `notificationMods` setting sends approval notifications to specific mod usernames via PM. Falls back to general mod inbox when blank.
-- Failure notifications routed through `notificationMods` first, falling back to the mod who triggered the action.
-- "Force post latest video (testing)" now always queues via the mod approval flow so mods can test the full approval pipeline.
+- Mod approval gate via `requireModApproval` to queue generated posts for
+  moderator review before publishing.
+- Auto-approve window via `autoApproveWindowMinutes` to publish queued posts
+  after a configured delay, or hold indefinitely when set to `0`.
+- New moderation actions: "Post pending episode", "Edit & Post pending
+  episode", and "Cancel pending episode".
+- Edit-before-post flow with a pre-populated form for pending title and body.
+- `notificationMods` setting for comma-separated usernames to receive approval
+  and failure notifications by PM.
 
 ### Fixed
 
-- TypeScript config: overrode `types` to remove missing `vitest/globals` reference and excluded `preview-site` to fix `TS5055` output file conflict.
-- `editPendingPostForm` callback `data` parameter type to match Devvit's `FormFunction` signature.
+- TypeScript config to remove missing `vitest/globals` reference and exclude
+  `preview-site`, fixing `TS5055` output conflicts.
+- `editPendingPostForm` callback `data` parameter type to match Devvit's
+  `FormFunction` signature.
 
 ### Changed
 
 - Updated `@devvit/public-api` and `devvit` to latest versions.
+- "Force post latest video (testing)" now always routes through the approval
+  queue to exercise the full moderation workflow.
+
+[Unreleased]:
+  https://github.com/HeyItsGilbert/YouTubeGeminiPostDevvit/compare/v0.1.0...HEAD
+[0.1.0]:
+  https://github.com/HeyItsGilbert/YouTubeGeminiPostDevvit/compare/a55d564...v0.1.0
