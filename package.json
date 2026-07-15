@@ -14,8 +14,8 @@
     "type-check": "tsc --build"
   },
   "dependencies": {
-    "@devvit/public-api": "0.13.5",
-    "@devvit/web": "0.13.5"
+    "@devvit/public-api": "0.13.8",
+    "@devvit/web": "0.13.8"
   },
   "devDependencies": {
     "devvit": "0.13.5",
